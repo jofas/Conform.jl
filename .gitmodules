@@ -1,0 +1,3 @@
+[submodule "RedBlackTree.jl"]
+	path = RedBlackTree.jl
+	url = https://github.com/jofas/RedBlackTree.jl
