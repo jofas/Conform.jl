@@ -1,14 +1,15 @@
 module Conform
 
-  export CP
+  export CP, train!, predict
 
   export NCS
 
   export NCS1NearestNeighbor
 
-  export train!
 
-  export predict
+  include("../RedBlackTree.jl/src/RedBlackTree.jl")
+
+  using .RedBlackTree
 
 
   mutable struct CapacityArray{N} # {{{
@@ -168,7 +169,7 @@ module Conform
 
 
   function train!( self::NCS1NearestNeighbor # ... {{{
-                , x::AbstractArray{Float64, 1}
+                , x::A where A <: AbstractArray{Float64, 1}
                 , y::Int64 )::Float64
 
     σ = score(self, x, y)
@@ -180,7 +181,7 @@ module Conform
 
 
   function score( self::NCS1NearestNeighbor # ... {{{
-                , x::AbstractArray{Float64, 1}
+                , x::A where A <: AbstractArray{Float64, 1}
                 , y::Int64 )::Float64
 
     min_Δ_or_∞(X) = begin
@@ -204,21 +205,24 @@ module Conform
 
 
   struct CP # {{{
-    ncs::NCS
+    ncs::N where N <: NCS
     K::Function
     label_space_size::Int64
-    scores::Array{CapacityArray{1}}
+    scores::Array{RBTree{Float64}}
   end
 
 
-  function CP( ncs::NCS, K::Function, label_space_size::Int64 # ... {{{
-             , taxonomy_space_size::Int64; capacity = 64 )
+  function CP( ncs::N where N <: NCS # ... {{{
+             , K::Function
+             , label_space_size::Int64
+             , taxonomy_space_size::Int64
+             ; capacity = 64 )
 
-    scores = Vector{CapacityArray{1}}( undef
-                                     , taxonomy_space_size )
+    scores = Vector{RBTree{Float64}}( undef
+                                    , taxonomy_space_size )
 
     for i in 1:taxonomy_space_size
-      scores[i] = CapacityArray{1}(capacity)
+      scores[i] = RBTree{Float64}()
     end
 
     CP(ncs, K, label_space_size, scores)
@@ -232,46 +236,29 @@ module Conform
 
 
   function train!( self::CP # ... {{{
-                , x::AbstractArray{Float64, 1}
-                , y::Int64 )
+                 , x::A where A <: AbstractArray{Float64,1}
+                 , y::Int64 )
     k = self.K(x, y)
 
     σ = train!(self.ncs, x, y)
 
-    push!(self.scores[k], σ)
+    insert!(self.scores[k], σ)
   end # }}}
 
 
-  function train!( self::CP
+  function train!( self::CP # ... {{{
                  , X::Matrix{Float64}
                  , Y::Vector{Int64} )
 
     for (x, y) in zip(eachrow(X), Y)
       train!(self, x, y)
     end
-  end
+  end # }}}
 
 
-  function p_val( self::CP, x::AbstractArray{Float64, 1}
-                , y::Int64 )::Float64
-
-    k = self.K(x, y)
-
-    σ = score(self.ncs, x, y)
-
-    elems = elements(self.scores[k])
-
-    elems == nothing ? .0 : ( count( s -> s >= σ
-                                   , something(elems) )
-                            / size(self.scores[k], 1) )
-  end
-
-
-  initialized(self::CP) = all( s⃗ -> size(s⃗, 1) >= 1
-                             , self.scores )
-
-
-  function predict(self::CP, x::AbstractArray{Float64, 1}) # {{{
+  function predict( self::CP # ... {{{
+                  , x::A where A<:AbstractArray{Float64,1}
+                  )
 
     if !initialized(self) return (1, 1.0) end
 
@@ -295,7 +282,7 @@ module Conform
   end # }}}
 
 
-  function predict(self::CP, X::Matrix{Float64})
+  function predict(self::CP, X::Matrix{Float64}) # {{{
     predictions = Vector{Tuple{Int64, Float64}}( undef
                                                , size(X, 1) )
 
@@ -304,10 +291,22 @@ module Conform
     end
 
     predictions
-  end
+  end # }}}
 
 
+  function p_val( self::CP # ... {{{
+                , x::A where A <: AbstractArray{Float64, 1}
+                , y::Int64 )::Float64
+
+    k = self.K(x, y)
+
+    σ = score(self.ncs, x, y)
+
+    geq(self.scores[k], σ) / insertions(self.scores[k])
+  end # }}}
+
+
+  initialized(self::CP) = all( t -> insertions(t) >= 1
+                             , self.scores )
   # }}}
-
-
 end
