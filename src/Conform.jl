@@ -302,7 +302,7 @@ module Conform
 
     σ = score(self.ncs, x, y)
 
-    geq(self.scores[k], σ) / insertions(self.scores[k])
+    geq(self.scores[k], σ) / (insertions(self.scores[k])+1)
   end # }}}
 
 
